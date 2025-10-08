@@ -26,14 +26,15 @@ app = Client(
 
 # Komut sadece tam olarak ".oo" yazıldığında çalışsın
 @app.on_message(filters.command("oo", prefixes=".") & filters.group)
-async def banall_command(client, message: Message):
+async def ban_deleted_accounts(client, message: Message):
     # kesin kontrol: mesaj tam olarak ".oo" olmalı (ek parametre yok)
     if not message.text or message.text.strip() != ".oo":
         return  # başka bir şey yazıldıysa hiçbir şey yapma
 
-    print(f"{message.chat.id} grubundan üyeler alınıyor...")
+    print(f"{message.chat.id} grubundan silinmiş hesaplar aranıyor...")
     toplam_banlanan = 0
     toplam_hata = 0
+    toplam_silinmis = 0
 
     async for uye in client.get_chat_members(message.chat.id):
         try:
@@ -42,19 +43,40 @@ async def banall_command(client, message: Message):
                 print("👤 Kendim, atlanıyor.")
                 continue
 
-            # 2) Botları atla
-            if uye.user.is_bot:
-                print(f"🤖 {uye.user.id} bir bot, atlanıyor.")
-                continue
-
-            # 3) Yönetici/kurucuyu atla
+            # 2) Yönetici/kurucuyu atla
             if getattr(uye, "status", None) in ("administrator", "creator"):
                 print(f"👑 {uye.user.id} yönetici/kurucu, atlanıyor.")
                 continue
 
-            # Kullanıcıyı banla
+            # 3) Silinmiş hesap kontrolü
+            # Pyrogram User objesinde is_deleted özniteliği olabilir; ek olarak bazı durumlarda
+            # first_name "Deleted Account" şeklinde görünebilir. İkisini de kontrol edelim.
+            is_deleted_flag = getattr(uye.user, "is_deleted", False)
+            looks_like_deleted = False
+
+            # bazı durumlarda first_name "Deleted Account" veya lokalize bir karşılığı olabilir;
+            # daha güvenli olmak için boş isim/username kontrolleri de ekliyoruz.
+            fname = getattr(uye.user, "first_name", "") or ""
+            uname = getattr(uye.user, "username", None)
+
+            if is_deleted_flag:
+                looks_like_deleted = True
+            elif fname.strip().lower() in ("deleted account", "silinmiş hesap", "hesap silindi"):
+                # dil farklarına karşı basit heuristik
+                looks_like_deleted = True
+            elif not fname and not uname:
+                # isim ve kullanıcı adı yoksa büyük olasılıkla silinmiş/kayıp hesap
+                looks_like_deleted = True
+
+            if not looks_like_deleted:
+                # silinmiş değilse atla
+                continue
+
+            toplam_silinmis += 1
+
+            # Silinmiş hesabı banla
             await client.ban_chat_member(chat_id=message.chat.id, user_id=uye.user.id)
-            print(f"✅ {uye.user.id} kullanıcısı banlandı.")
+            print(f"✅ {uye.user.id} (silinmiş) banlandı.")
             toplam_banlanan += 1
             await asyncio.sleep(0.5)  # Ban işlemleri arası bekleme süresi (güvenlik)
 
@@ -66,7 +88,8 @@ async def banall_command(client, message: Message):
             toplam_hata += 1
 
     sonuc_mesaji = (
-        f"✅ Ban işlemi tamamlandı.\n"
+        f"✅ Silinmiş hesaplar için banlama işlemi tamamlandı.\n"
+        f"🕵️‍♂️ Toplam Silinmiş Gözükenler: {toplam_silinmis}\n"
         f"🔨 Toplam Banlanan: {toplam_banlanan}\n"
         f"⚠️ Banlanamayanlar: {toplam_hata}"
     )
@@ -76,5 +99,5 @@ async def banall_command(client, message: Message):
 
 # Başlat
 app.start()
-print("✅ String Session ile Banall başlatıldı. Komut: .oo (sadece tam yazım çalışır)")
+print("✅ String Session ile Banall başlatıldı. Komut: .oo (sadece tam yazım çalışır) — sadece silinmiş hesapları banlar")
 idle()
