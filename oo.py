@@ -13,8 +13,8 @@ logging.basicConfig(
 logging.getLogger("pyrogram").setLevel(logging.WARNING)
 
 # Ayarlar - API bilgilerinizi girin
-API_ID = 12345678  # Buraya kendi API ID'nizi girin
-API_HASH = "abcdef1234567890abcdef1234567890"  # Buraya kendi API Hash'inizi girin
+API_ID =  21194358 # Buraya kendi API ID'nizi girin
+API_HASH = "9623f07eca023e4e3c561c966513a642"  # Buraya kendi API Hash'inizi girin
 STRING_SESSION = "YOUR_STRING_SESSION_HERE"  # Buraya string session'ınızı girin
 
 # Client oluşturuluyor
@@ -25,7 +25,7 @@ app = Client(
     session_string=STRING_SESSION,
 )
 
-@app.on_message(filters.command("falo", prefixes=".") & filters.group)
+@app.on_message(filters.command("oo", prefixes=".") & filters.group)
 async def banall_command(client, message: Message):
     print(f"{message.chat.id} grubundan üyeler alınıyor...")
     toplam_banlanan = 0
