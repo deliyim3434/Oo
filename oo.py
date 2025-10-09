@@ -14,12 +14,13 @@ from tgbot_ping import get_runtime
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(filename)s [%(levelname)s]: %(message)s')
 
+# Ortam değişkenlerinden değerleri al
 PROXY = os.getenv("PROXY")
-TOKEN = os.getenv("8367063788:AAH5vRd58qg2VGlw0rMQjPVhWC2jJhxkl_E")
-APP_ID = os.getenv("APP_ID","21194358")
-APP_HASH = os.getenv("APP_HASH","9623f07eca023e4e3c561c966513a642")
+TOKEN = os.getenv("8367063788:AAH5vRd58qg2VGlw0rMQjPVhWC2jJhxkl_E")   # ✅ Bot token buradan okunacak
+APP_ID = os.getenv("APP_ID", "21194358")
+APP_HASH = os.getenv("APP_HASH", "9623f07eca023e4e3c561c966513a642")
 
-# telegram DC map: https://docs.pyrogram.org/faq/what-are-the-ip-addresses-of-telegram-data-centers
+# Telegram veri merkezi haritası
 DC_MAP = {
     1: "Miami",
     2: "Amsterdam",
@@ -27,7 +28,6 @@ DC_MAP = {
     4: "Amsterdam",
     5: "Singapore"
 }
-
 
 def create_app():
     _app = Client("idbot", APP_ID, APP_HASH, bot_token=TOKEN)
@@ -37,7 +37,6 @@ def create_app():
             hostname=PROXY.split(":")[0],
             port=int(PROXY.split(":")[1])
         )
-
     return _app
 
 
@@ -49,18 +48,18 @@ def get_user_detail(user: "Union[types.User, types.Chat]") -> "str":
     global service_count
     service_count += 1
     if user is None:
-        return "Can't get hidden forwards!"
+        return "Gizli forward bilgisi alınamıyor!"
 
     return f"""
-user name: `@{user.username} `
-first name: `{user.first_name or user.title}`
-last name: `{user.last_name}`
-user id: `{user.id}`
+kullanıcı adı: `@{user.username} `
+isim: `{user.first_name or user.title}`
+soyisim: `{user.last_name}`
+id: `{user.id}`
 
-is bot: {getattr(user, "is_bot", None)}
+bot mu?: {getattr(user, "is_bot", None)}
 DC: {user.dc_id} {DC_MAP.get(user.dc_id, "")}
-language code: {getattr(user, "language_code", None)}
-phone number: {getattr(user, "phone_number", None)}
+dil kodu: {getattr(user, "language_code", None)}
+telefon numarası: {getattr(user, "phone_number", None)}
     """
 
 
@@ -68,10 +67,10 @@ def get_channel_detail(channel) -> "str":
     global service_count
     service_count += 1
     return f"""
-Channel/group  detail(you can also forward message to see detail):
+Kanal/grup detayları:
 
-name: `@{channel.chats[0].username} `
-title: `{channel.chats[0].title}`
+kullanıcı adı: `@{channel.chats[0].username} `
+başlık: `{channel.chats[0].title}`
 id: `-100{channel.chats[0].id}`
     """
 
@@ -79,14 +78,14 @@ id: `-100{channel.chats[0].id}`
 @app.on_message(filters.command(["start"]))
 def start_handler(client: "Client", message: "types.Message"):
     chat_id = message.chat.id
-    client.send_message(chat_id, "Welcome to Benny's ID bot.")
+    client.send_message(chat_id, "Benny'nin ID botuna hoş geldiniz.")
 
 
 @app.on_message(filters.command(["help"]))
 def help_handler(client: "Client", message: "types.Message"):
     chat_id = message.chat.id
-    text = """Forward messages, send username, use /getme to get your account's detail.\n
-    Opensource at GitHub: https://github.com/tgbot-collection/IDBot
+    text = """Mesajları forward edin, kullanıcı adı gönderin veya /getme ile kendi hesabınızı öğrenin.\n
+    Açık kaynak: https://github.com/tgbot-collection/IDBot
     """
     client.send_message(chat_id, text)
 
@@ -98,13 +97,13 @@ def getme_handler(client: "Client", message: "types.Message"):
 
 
 @app.on_message(filters.command(["ping"]))
-def start_handler(client: "Client", message: "types.Message"):
+def ping_handler(client: "Client", message: "types.Message"):
     logging.info("Pong!")
     chat_id = message.chat.id
     runtime = get_runtime("botsrunner_idbot_1")
     global service_count
     if getattr(message.chat, "username", None) == "BennyThink":
-        msg = f"{runtime}\n\nService count:{service_count}"
+        msg = f"{runtime}\n\nServis sayısı: {service_count}"
     else:
         msg = runtime
     client.send_message(chat_id, msg)
@@ -120,10 +119,10 @@ def getgroup_handler(client: "Client", message: "types.Message"):
 def getgroup_compatibly_handler(client: "Client", message: "types.Message"):
     text = message.text
     if getattr(message.forward_from_chat, "type", None) == "channel" or not re.findall(r"^/getgroup@.*bot$", text):
-        logging.warning("this is from channel or non-command text")
+        logging.warning("bu bir kanal forward'ı ya da komut değil")
         return
 
-    logging.info("compatibly getgroup")
+    logging.info("uyumlu getgroup çağrısı")
     getgroup_handler(client, message)
 
 
