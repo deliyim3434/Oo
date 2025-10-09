@@ -1,8 +1,6 @@
 #!/usr/local/bin/python3
 # coding: utf-8
 
-__author__ = "Benny <benny.think@gmail.com>"
-
 import logging
 import os
 import re
@@ -14,13 +12,13 @@ from tgbot_ping import get_runtime
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(filename)s [%(levelname)s]: %(message)s')
 
-# Ortam değişkenlerinden değerleri al
+# Ortam değişkenleri
 PROXY = os.getenv("PROXY")
-TOKEN = os.getenv("8367063788:AAH5vRd58qg2VGlw0rMQjPVhWC2jJhxkl_E")   # ✅ Bot token buradan okunacak
-APP_ID = os.getenv("APP_ID", "21194358")
-APP_HASH = os.getenv("APP_HASH", "9623f07eca023e4e3c561c966513a642")
+TOKEN = os.getenv("BOT_TOKEN")          # Heroku Config Vars'tan gelecek
+APP_ID = int(os.getenv("APP_ID"))       # Telegram API ID
+APP_HASH = os.getenv("APP_HASH")        # Telegram API Hash
 
-# Telegram veri merkezi haritası
+# Telegram DC haritası
 DC_MAP = {
     1: "Miami",
     2: "Amsterdam",
@@ -39,12 +37,11 @@ def create_app():
         )
     return _app
 
-
 app = create_app()
 service_count = 0
 
 
-def get_user_detail(user: "Union[types.User, types.Chat]") -> "str":
+def get_user_detail(user: "Union[types.User, types.Chat]") -> str:
     global service_count
     service_count += 1
     if user is None:
@@ -63,7 +60,7 @@ telefon numarası: {getattr(user, "phone_number", None)}
     """
 
 
-def get_channel_detail(channel) -> "str":
+def get_channel_detail(channel) -> str:
     global service_count
     service_count += 1
     return f"""
@@ -76,47 +73,43 @@ id: `-100{channel.chats[0].id}`
 
 
 @app.on_message(filters.command(["start"]))
-def start_handler(client: "Client", message: "types.Message"):
-    chat_id = message.chat.id
-    client.send_message(chat_id, "Benny'nin ID botuna hoş geldiniz.")
+def start_handler(client: Client, message: types.Message):
+    client.send_message(message.chat.id, "Benny'nin ID botuna hoş geldiniz.")
 
 
 @app.on_message(filters.command(["help"]))
-def help_handler(client: "Client", message: "types.Message"):
-    chat_id = message.chat.id
+def help_handler(client: Client, message: types.Message):
     text = """Mesajları forward edin, kullanıcı adı gönderin veya /getme ile kendi hesabınızı öğrenin.\n
     Açık kaynak: https://github.com/tgbot-collection/IDBot
     """
-    client.send_message(chat_id, text)
+    client.send_message(message.chat.id, text)
 
 
 @app.on_message(filters.command(["getme"]))
-def getme_handler(client: "Client", message: "types.Message"):
+def getme_handler(client: Client, message: types.Message):
     me = get_user_detail(message.from_user)
     message.reply_text(me, quote=True)
 
 
 @app.on_message(filters.command(["ping"]))
-def ping_handler(client: "Client", message: "types.Message"):
-    logging.info("Pong!")
-    chat_id = message.chat.id
-    runtime = get_runtime("botsrunner_idbot_1")
+def ping_handler(client: Client, message: types.Message):
     global service_count
+    runtime = get_runtime("botsrunner_idbot_1")
     if getattr(message.chat, "username", None) == "BennyThink":
         msg = f"{runtime}\n\nServis sayısı: {service_count}"
     else:
         msg = runtime
-    client.send_message(chat_id, msg)
+    client.send_message(message.chat.id, msg)
 
 
 @app.on_message(filters.command(["getgroup"]))
-def getgroup_handler(client: "Client", message: "types.Message"):
+def getgroup_handler(client: Client, message: types.Message):
     me = get_user_detail(message.chat)
     message.reply_text(me, quote=True)
 
 
 @app.on_message(filters.text & filters.group)
-def getgroup_compatibly_handler(client: "Client", message: "types.Message"):
+def getgroup_compatibly_handler(client: Client, message: types.Message):
     text = message.text
     if getattr(message.forward_from_chat, "type", None) == "channel" or not re.findall(r"^/getgroup@.*bot$", text):
         logging.warning("bu bir kanal forward'ı ya da komut değil")
@@ -127,7 +120,7 @@ def getgroup_compatibly_handler(client: "Client", message: "types.Message"):
 
 
 @app.on_message(filters.forwarded & filters.private)
-def forward_handler(client: "Client", message: "types.Message"):
+def forward_handler(client: Client, message: types.Message):
     fwd = message.forward_from or message.forward_from_chat
     me = get_user_detail(fwd)
     message.reply_text(me, quote=True)
@@ -141,15 +134,13 @@ def get_users(username):
 def get_channel(username):
     peer: "Union[raw.base.InputChannel, Any]" = app.resolve_peer(username)
     result = app.invoke(
-        raw.functions.channels.GetChannels(
-            id=[peer]
-        )
+        raw.functions.channels.GetChannels(id=[peer])
     )
     return get_channel_detail(result)
 
 
 @app.on_message(filters.text & filters.private)
-def private_handler(client: "Client", message: "types.Message"):
+def private_handler(client: Client, message: types.Message):
     username = re.sub(r"@+|https://t.me/", "", message.text)
     funcs = [get_users, get_channel]
     text = ""
@@ -161,10 +152,11 @@ def private_handler(client: "Client", message: "types.Message"):
                 break
         except Exception as e:
             logging.error(traceback.format_exc())
-            text = e
+            text = str(e)
 
     message.reply_text(text, quote=True)
 
 
 if __name__ == '__main__':
     app.run()
+    
