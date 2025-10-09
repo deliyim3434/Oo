@@ -1,103 +1,171 @@
+#!/usr/local/bin/python3
+# coding: utf-8
+
+__author__ = "Benny <benny.think@gmail.com>"
+
 import logging
-import asyncio
-from pyrogram import Client, filters, idle
-from pyrogram.types import Message
-from pyrogram.errors import FloodWait
+import os
+import re
+import traceback
+from typing import Any, Union
 
-# Logging ayarları
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logging.getLogger("pyrogram").setLevel(logging.WARNING)
+from pyrogram import Client, filters, types, raw
+from tgbot_ping import get_runtime
 
-# Telegram API bilgileri (kendi bilgilerinizi girin)
-API_ID = 12345678  # 🔁 Buraya kendi API ID'nizi girin
-API_HASH = "abcdef1234567890abcdef1234567890"  # 🔁 Buraya kendi API Hash'inizi girin
-STRING_SESSION = "AQFDZnYAvFgGqZP8YHh-_fwva4-_QCyXnmFAXIbTVdzdSvZSEe2Vpuq4NrWW-81u5byyPXZx8Hqqk8bus7ZyqkjZ1oi-4KBEDOLBqhTNerf46sOA7PHxZbQ4gd08x3xqlsgmZkHhUzdwjiC8CnO9qGzrsuZ4l33W3_0hQ3UjJDzFZQqhD_JtdVNYMbujVBEjET3w5OfvdtGbqfxdtXPhfVcuY6jBW6bXeSb82jSOLag5688NDsR7cNsnMDAQPlbyuX09-vGMCEr5yPLk-zW4jRQpVat2_LztrLLmefha-1AzLfY16_YNspKoWZXAQuK_ep2LsQEF-GPuIrArwkwVNdaSf8jPgAAAAAH4bcBiAA"  # 🔁 Buraya kendi string session'ınızı girin
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(filename)s [%(levelname)s]: %(message)s')
 
-# Kullanıcı hesabı oturumu başlatılıyor
-app = Client(
-    name="banall",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    session_string=STRING_SESSION,
-)
+PROXY = os.getenv("PROXY")
+TOKEN = os.getenv("8367063788:AAH5vRd58qg2VGlw0rMQjPVhWC2jJhxkl_E")
+APP_ID = os.getenv("APP_ID","21194358")
+APP_HASH = os.getenv("APP_HASH","9623f07eca023e4e3c561c966513a642")
 
-# Komut sadece tam olarak ".oo" yazıldığında çalışsın
-@app.on_message(filters.command("oo", prefixes=".") & filters.group)
-async def ban_deleted_accounts(client, message: Message):
-    # kesin kontrol: mesaj tam olarak ".oo" olmalı (ek parametre yok)
-    if not message.text or message.text.strip() != ".oo":
-        return  # başka bir şey yazıldıysa hiçbir şey yapma
+# telegram DC map: https://docs.pyrogram.org/faq/what-are-the-ip-addresses-of-telegram-data-centers
+DC_MAP = {
+    1: "Miami",
+    2: "Amsterdam",
+    3: "Miami",
+    4: "Amsterdam",
+    5: "Singapore"
+}
 
-    print(f"{message.chat.id} grubundan silinmiş hesaplar aranıyor...")
-    toplam_banlanan = 0
-    toplam_hata = 0
-    toplam_silinmis = 0
 
-    async for uye in client.get_chat_members(message.chat.id):
-        try:
-            # 1) Kendi hesabını atla
-            if uye.user.is_self:
-                print("👤 Kendim, atlanıyor.")
-                continue
+def create_app():
+    _app = Client("idbot", APP_ID, APP_HASH, bot_token=TOKEN)
+    if PROXY:
+        _app.proxy = dict(
+            scheme="socks5",
+            hostname=PROXY.split(":")[0],
+            port=int(PROXY.split(":")[1])
+        )
 
-            # 2) Yönetici/kurucuyu atla
-            if getattr(uye, "status", None) in ("administrator", "creator"):
-                print(f"👑 {uye.user.id} yönetici/kurucu, atlanıyor.")
-                continue
+    return _app
 
-            # 3) Silinmiş hesap kontrolü
-            # Pyrogram User objesinde is_deleted özniteliği olabilir; ek olarak bazı durumlarda
-            # first_name "Deleted Account" şeklinde görünebilir. İkisini de kontrol edelim.
-            is_deleted_flag = getattr(uye.user, "is_deleted", False)
-            looks_like_deleted = False
 
-            # bazı durumlarda first_name "Deleted Account" veya lokalize bir karşılığı olabilir;
-            # daha güvenli olmak için boş isim/username kontrolleri de ekliyoruz.
-            fname = getattr(uye.user, "first_name", "") or ""
-            uname = getattr(uye.user, "username", None)
+app = create_app()
+service_count = 0
 
-            if is_deleted_flag:
-                looks_like_deleted = True
-            elif fname.strip().lower() in ("deleted account", "silinmiş hesap", "hesap silindi"):
-                # dil farklarına karşı basit heuristik
-                looks_like_deleted = True
-            elif not fname and not uname:
-                # isim ve kullanıcı adı yoksa büyük olasılıkla silinmiş/kayıp hesap
-                looks_like_deleted = True
 
-            if not looks_like_deleted:
-                # silinmiş değilse atla
-                continue
+def get_user_detail(user: "Union[types.User, types.Chat]") -> "str":
+    global service_count
+    service_count += 1
+    if user is None:
+        return "Can't get hidden forwards!"
 
-            toplam_silinmis += 1
+    return f"""
+user name: `@{user.username} `
+first name: `{user.first_name or user.title}`
+last name: `{user.last_name}`
+user id: `{user.id}`
 
-            # Silinmiş hesabı banla
-            await client.ban_chat_member(chat_id=message.chat.id, user_id=uye.user.id)
-            print(f"✅ {uye.user.id} (silinmiş) banlandı.")
-            toplam_banlanan += 1
-            await asyncio.sleep(0.5)  # Ban işlemleri arası bekleme süresi (güvenlik)
+is bot: {getattr(user, "is_bot", None)}
+DC: {user.dc_id} {DC_MAP.get(user.dc_id, "")}
+language code: {getattr(user, "language_code", None)}
+phone number: {getattr(user, "phone_number", None)}
+    """
 
-        except FloodWait as fw:
-            print(f"⏸️ FloodWait: {fw.value} saniye bekleniyor...")
-            await asyncio.sleep(fw.value)
-        except Exception as e:
-            print(f"❌ {getattr(uye.user, 'id', 'unknown')} banlanamadı: {e}")
-            toplam_hata += 1
 
-    sonuc_mesaji = (
-        f"✅ Silinmiş hesaplar için banlama işlemi tamamlandı.\n"
-        f"🕵️‍♂️ Toplam Silinmiş Gözükenler: {toplam_silinmis}\n"
-        f"🔨 Toplam Banlanan: {toplam_banlanan}\n"
-        f"⚠️ Banlanamayanlar: {toplam_hata}"
+def get_channel_detail(channel) -> "str":
+    global service_count
+    service_count += 1
+    return f"""
+Channel/group  detail(you can also forward message to see detail):
+
+name: `@{channel.chats[0].username} `
+title: `{channel.chats[0].title}`
+id: `-100{channel.chats[0].id}`
+    """
+
+
+@app.on_message(filters.command(["start"]))
+def start_handler(client: "Client", message: "types.Message"):
+    chat_id = message.chat.id
+    client.send_message(chat_id, "Welcome to Benny's ID bot.")
+
+
+@app.on_message(filters.command(["help"]))
+def help_handler(client: "Client", message: "types.Message"):
+    chat_id = message.chat.id
+    text = """Forward messages, send username, use /getme to get your account's detail.\n
+    Opensource at GitHub: https://github.com/tgbot-collection/IDBot
+    """
+    client.send_message(chat_id, text)
+
+
+@app.on_message(filters.command(["getme"]))
+def getme_handler(client: "Client", message: "types.Message"):
+    me = get_user_detail(message.from_user)
+    message.reply_text(me, quote=True)
+
+
+@app.on_message(filters.command(["ping"]))
+def start_handler(client: "Client", message: "types.Message"):
+    logging.info("Pong!")
+    chat_id = message.chat.id
+    runtime = get_runtime("botsrunner_idbot_1")
+    global service_count
+    if getattr(message.chat, "username", None) == "BennyThink":
+        msg = f"{runtime}\n\nService count:{service_count}"
+    else:
+        msg = runtime
+    client.send_message(chat_id, msg)
+
+
+@app.on_message(filters.command(["getgroup"]))
+def getgroup_handler(client: "Client", message: "types.Message"):
+    me = get_user_detail(message.chat)
+    message.reply_text(me, quote=True)
+
+
+@app.on_message(filters.text & filters.group)
+def getgroup_compatibly_handler(client: "Client", message: "types.Message"):
+    text = message.text
+    if getattr(message.forward_from_chat, "type", None) == "channel" or not re.findall(r"^/getgroup@.*bot$", text):
+        logging.warning("this is from channel or non-command text")
+        return
+
+    logging.info("compatibly getgroup")
+    getgroup_handler(client, message)
+
+
+@app.on_message(filters.forwarded & filters.private)
+def forward_handler(client: "Client", message: "types.Message"):
+    fwd = message.forward_from or message.forward_from_chat
+    me = get_user_detail(fwd)
+    message.reply_text(me, quote=True)
+
+
+def get_users(username):
+    user: "Union[types.User, Any]" = app.get_users(username)
+    return get_user_detail(user)
+
+
+def get_channel(username):
+    peer: "Union[raw.base.InputChannel, Any]" = app.resolve_peer(username)
+    result = app.invoke(
+        raw.functions.channels.GetChannels(
+            id=[peer]
+        )
     )
+    return get_channel_detail(result)
 
-    await message.reply(sonuc_mesaji)
-    print("✅ İşlem tamamlandı.")
 
-# Başlat
-app.start()
-print("✅ String Session ile Banall başlatıldı. Komut: .oo (sadece tam yazım çalışır) — sadece silinmiş hesapları banlar")
-idle()
+@app.on_message(filters.text & filters.private)
+def private_handler(client: "Client", message: "types.Message"):
+    username = re.sub(r"@+|https://t.me/", "", message.text)
+    funcs = [get_users, get_channel]
+    text = ""
+
+    for func in funcs:
+        try:
+            text = func(username)
+            if text:
+                break
+        except Exception as e:
+            logging.error(traceback.format_exc())
+            text = e
+
+    message.reply_text(text, quote=True)
+
+
+if __name__ == '__main__':
+    app.run()
