@@ -1,5 +1,6 @@
-pyrogram
+Pyrogram
 tgcrypto
-py_tgcalls
+Py-TgCalls
+python-dotenv
+youtube-search-python
 yt-dlp
-FFMpeg
