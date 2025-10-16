@@ -1,4 +1,4 @@
-# main.py (TÜM HATALAR GİDERİLDİ - FİNAL VERSİYON)
+# main.py (KESİN ÇÖZÜM - FİNAL VERSİYON)
 
 import os
 import asyncio
@@ -10,8 +10,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from pytgcalls import PyTgCalls
-# --- SON DÜZELTME: AudioPiped doğru yoldan (stream) import edildi ---
-from pytgcalls.stream import AudioPiped
+# --- KESİN DÜZELTME: Uyumsuz ve gereksiz tüm class import'ları kaldırıldı ---
 
 from yt_dlp import YoutubeDL
 
@@ -86,7 +85,8 @@ async def play_next_song(chat_id: int):
     now_playing[chat_id] = filepath
     
     try:
-        await pytgcalls.change_stream(chat_id, AudioPiped(filepath))
+        # --- KESİN DÜZELTME: Gereksiz class'lar olmadan, DOĞRUDAN dosya yolu veriliyor ---
+        await pytgcalls.change_stream(chat_id, filepath)
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🎥 YouTube'da İzle", url=song['link'])]])
         await app.send_message(
             chat_id,
@@ -132,7 +132,8 @@ async def play_command(_, message: Message):
     is_active = chat_id in active_chats
     if not is_active:
         try:
-            await pytgcalls.join_group_call(chat_id, AudioPiped(song_data['filepath']))
+            # --- KESİN DÜZELTME: Gereksiz class'lar olmadan, DOĞRUDAN dosya yolu veriliyor ---
+            await pytgcalls.join_group_call(chat_id, song_data['filepath'])
             active_chats.append(chat_id)
             now_playing[chat_id] = song_data['filepath']
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🎥 YouTube'da İzle", url=song_data['link'])]])
@@ -146,10 +147,10 @@ async def play_command(_, message: Message):
         add_to_queue(chat_id, song_data['title'], song_data['duration'], song_data['filepath'], song_data['link'], requester)
         await msg.edit_text(f"➕ **Sıraya Eklendi:** `{song_data['title']}`\n**Pozisyon:** `{len(get_queue(chat_id))}`")
 
+# Diğer komutlar (değişiklik yok)
 @app.on_message(filters.command("skip", prefixes=PREFIX) & filters.group)
 async def skip_command(_, message: Message):
-    if not get_queue(message.chat.id):
-        return await message.reply_text("⏭️ Sırada başka şarkı yok.")
+    if not get_queue(message.chat.id): return await message.reply_text("⏭️ Sırada başka şarkı yok.")
     await message.reply_text("⏭️ **Şarkı atlandı!**")
     await play_next_song(message.chat.id)
 
@@ -177,8 +178,7 @@ async def stop_command(_, message: Message):
 @app.on_message(filters.command("queue", prefixes=PREFIX) & filters.group)
 async def queue_command(_, message: Message):
     queue = get_queue(message.chat.id)
-    if not queue:
-        return await message.reply_text("📭 Çalma listesi boş.")
+    if not queue: return await message.reply_text("📭 Çalma listesi boş.")
     queue_text = "**🎶 Çalma Listesi:**\n\n"
     for i, song in enumerate(queue, 1):
         queue_text += f"`{i}.` **{song['title']}** - `{song['duration']}`\n"
@@ -186,18 +186,15 @@ async def queue_command(_, message: Message):
 
 # --- OLAY DİNLEYİCİSİ ---
 @pytgcalls.on_stream_end()
-async def on_stream_end_handler(_, update):
+async def on_stream_end_handler(client, update):
     await play_next_song(update.chat_id)
 
 # --- BOTU BAŞLATMA ---
 async def main():
     logging.info("Bot başlatılıyor...")
-    await app.start()
-    logging.info("Bot istemcisi başlatıldı.")
-    await user_client.start()
-    logging.info("Userbot istemcisi başlatıldı.")
-    await pytgcalls.start()
-    logging.info("PyTgCalls istemcisi başlatıldı. Bot artık hazır!")
+    await app.start(); logging.info("Bot istemcisi başlatıldı.")
+    await user_client.start(); logging.info("Userbot istemcisi başlatıldı.")
+    await pytgcalls.start(); logging.info("PyTgCalls istemcisi başlatıldı. Bot artık hazır!")
     await asyncio.idle()
 
 if __name__ == "__main__":
