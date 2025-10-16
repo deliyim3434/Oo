@@ -1,5 +1,3 @@
-# main.py (KESİN ÇÖZÜM - FİNAL VERSİYON)
-
 import os
 import asyncio
 from typing import Dict, List, Tuple
@@ -31,7 +29,16 @@ YTDL_OPTIONS = {
 
 # --- İSTEMCİLERİ BAŞLATMA ---
 app = Client("MusicBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-user_client = Client(session_name=SESSION_STRING, api_id=API_ID, api_hash=API_HASH)
+
+# --- DÜZELTİLMİŞ SATIR ---
+# 'session_name' yerine 'name' ve 'session_string' kullanıldı.
+user_client = Client(
+    name="my_account",
+    session_string=SESSION_STRING,
+    api_id=API_ID,
+    api_hash=API_HASH
+)
+
 pytgcalls = PyTgCalls(user_client)
 
 # Listeler ve Sözlükler
