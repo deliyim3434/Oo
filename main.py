@@ -1,4 +1,4 @@
-# main.py (SON DÜZELTİLMİŞ HALİ)
+# main.py (FİNAL VERSİYON)
 
 import os
 import asyncio
@@ -10,8 +10,8 @@ from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from pytgcalls import PyTgCalls
-# --- DÜZELTME 1: Uyumsuz 'GroupCallNotFound' import'u kaldırıldı ---
-from pytgcalls.types.input_stream import InputStream
+# --- FİNAL DÜZELTME: InputStream import yolu düzeltildi ---
+from pytgcalls.types import InputStream 
 
 from yt_dlp import YoutubeDL
 
@@ -86,14 +86,13 @@ async def play_next_song(chat_id: int):
     now_playing[chat_id] = filepath
     
     try:
-        await pytgcalls.change_stream(chat_id, InputStream(input_filename=filepath))
+        await pytgcalls.change_stream(chat_id, InputStream(filepath))
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🎥 YouTube'da İzle", url=song['link'])]])
         await app.send_message(
             chat_id,
             f"🎵 **Şimdi Çalıyor:**\n\n**Adı:** `{song['title']}`\n**Süre:** `{song['duration']}`\n**İsteyen:** {song['requested_by']}",
             reply_markup=keyboard
         )
-    # --- DÜZELTME 2: 'GroupCallNotFound' yerine genel bir hata yakalama kullanıldı ---
     except Exception as e:
         logging.error(f"Sıradaki şarkı çalınırken hata: {e}")
         if chat_id in active_chats:
@@ -133,7 +132,7 @@ async def play_command(_, message: Message):
     is_active = chat_id in active_chats
     if not is_active:
         try:
-            await pytgcalls.join_group_call(chat_id, InputStream(input_filename=song_data['filepath']))
+            await pytgcalls.join_group_call(chat_id, InputStream(song_data['filepath']))
             active_chats.append(chat_id)
             now_playing[chat_id] = song_data['filepath']
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🎥 YouTube'da İzle", url=song_data['link'])]])
