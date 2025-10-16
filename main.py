@@ -1,4 +1,4 @@
-# main.py (FİNAL VERSİYON)
+# main.py (FINAL CORRECTED VERSION)
 
 import os
 import asyncio
@@ -10,8 +10,8 @@ from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from pytgcalls import PyTgCalls
-# --- FİNAL DÜZELTME: InputStream import yolu düzeltildi ---
-from pytgcalls.types import InputStream 
+# --- FİNAL DÜZELTME: 'InputStream' yerine 'AudioPiped' import edildi ---
+from pytgcalls.types import AudioPiped
 
 from yt_dlp import YoutubeDL
 
@@ -86,7 +86,8 @@ async def play_next_song(chat_id: int):
     now_playing[chat_id] = filepath
     
     try:
-        await pytgcalls.change_stream(chat_id, InputStream(filepath))
+        # --- FİNAL DÜZELTME: 'InputStream' yerine 'AudioPiped' kullanıldı ---
+        await pytgcalls.change_stream(chat_id, AudioPiped(filepath))
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🎥 YouTube'da İzle", url=song['link'])]])
         await app.send_message(
             chat_id,
@@ -132,7 +133,8 @@ async def play_command(_, message: Message):
     is_active = chat_id in active_chats
     if not is_active:
         try:
-            await pytgcalls.join_group_call(chat_id, InputStream(song_data['filepath']))
+            # --- FİNAL DÜZELTME: 'InputStream' yerine 'AudioPiped' kullanıldı ---
+            await pytgcalls.join_group_call(chat_id, AudioPiped(song_data['filepath']))
             active_chats.append(chat_id)
             now_playing[chat_id] = song_data['filepath']
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🎥 YouTube'da İzle", url=song_data['link'])]])
