@@ -1,30 +1,33 @@
-# main.py
+# main.py (TAM VE DÜZELTİLMİŞ HALİ)
 
 import os
 import asyncio
 from typing import Dict, List, Tuple
+import logging
 
 # Gerekli kütüphaneleri içe aktarma
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
-from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
 
 from pytgcalls import PyTgCalls
-from pytgcalls.types import AudioPiped
 from pytgcalls.exceptions import GroupCallNotFound
+from pytgcalls.types.input_stream import InputStream
+from pytgcalls.types.input_stream import AudioPiped
 
 from yt_dlp import YoutubeDL
 
 # Yapılandırma dosyasından bilgileri çekme
 from config import API_ID, API_HASH, BOT_TOKEN, SESSION_STRING
 
+# Hata ayıklama loglarını etkinleştir
+logging.basicConfig(level=logging.INFO)
+
 # --- BOT AYARLARI ---
-# User'ın tercihine göre komut ön eki '.' olarak ayarlandı.
 PREFIX = "."
 # YouTube-DL için ayarlar
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
-    'outtmpl': 'downloads/%(title)s.%(ext)s',
+    'outtmpl': 'downloads/%(id)s.%(ext)s', # Dosya adını video id'si yapalım
     'noplaylist': True,
     'nocheckcertificate': True,
     'geo_bypass': True,
@@ -33,59 +36,60 @@ YTDL_OPTIONS = {
 }
 
 # --- İSTEMCİLERİ BAŞLATMA ---
-# Bot istemcisi
 app = Client("MusicBot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-# Sesli arama için yardımcı hesap (userbot) istemcisi
 user_client = Client(session_name=SESSION_STRING, api_id=API_ID, api_hash=API_HASH)
-# PyTgCalls istemcisi
 pytgcalls = PyTgCalls(user_client)
 
-
-# Çalma listesi (sıra) ve aktif sesli sohbetleri takip etmek için
+# Çalma listesi ve aktif sohbetler
 queues: Dict[int, List[Dict]] = {}
 active_chats: List[int] = []
+# Çalan şarkının dosya yolunu saklamak için
+now_playing: Dict[int, str] = {}
 
 
 # --- YARDIMCI FONKSİYONLAR ---
 
 def get_queue(chat_id: int) -> List[Dict]:
-    """Belirli bir sohbetin çalma listesini alır."""
     return queues.get(chat_id, [])
 
-def add_to_queue(chat_id: int, title: str, duration: str, url: str, link: str, requested_by: str):
-    """Sohbetin çalma listesine yeni şarkı ekler."""
+def add_to_queue(chat_id: int, title: str, duration: str, filepath: str, link: str, requested_by: str):
     if chat_id not in queues:
         queues[chat_id] = []
     
     queues[chat_id].append({
-        "title": title, "duration": duration, "url": url,
+        "title": title, "duration": duration, "filepath": filepath,
         "link": link, "requested_by": requested_by
     })
 
-def search_youtube(query: str) -> Tuple[Dict, str]:
-    """YouTube'da arama yapar ve ilk sonucun bilgilerini döndürür."""
+def search_and_download(query: str) -> Tuple[Dict, str]:
+    """YouTube'da arama yapar ve ilk sonucu indirir."""
     try:
         with YoutubeDL(YTDL_OPTIONS) as ydl:
-            info = ydl.extract_info(f"ytsearch:{query}", download=False)['entries'][0]
+            info = ydl.extract_info(f"ytsearch:{query}", download=True)['entries'][0]
         
-        # Süreyi dakika:saniye formatına çevirme
         duration_sec = info.get('duration', 0)
         duration_str = f"{duration_sec // 60}:{duration_sec % 60:02d}"
+        
+        filepath = ydl.prepare_filename(info)
 
         return {
-            "url": info['formats'][0]['url'],
+            "filepath": filepath,
             "title": info.get('title', 'Bilinmeyen Başlık'),
             "duration": duration_str,
             "link": f"https://www.youtube.com/watch?v={info['id']}"
         }, None
     except Exception as e:
-        return None, f"Arama sırasında bir hata oluştu: {e}"
+        return None, f"Arama veya indirme sırasında hata: {e}"
 
 async def play_next_song(chat_id: int):
-    """Sıradaki şarkıyı çalar."""
+    """Sıradaki şarkıyı çalar ve bir önceki şarkıyı siler."""
+    # Bir önceki şarkının dosyasını sil
+    if chat_id in now_playing and os.path.exists(now_playing[chat_id]):
+        os.remove(now_playing[chat_id])
+        del now_playing[chat_id]
+
     queue = get_queue(chat_id)
     if not queue:
-        # Sırada şarkı kalmadıysa sohbetten ayrıl
         if chat_id in active_chats:
             active_chats.remove(chat_id)
         await pytgcalls.leave_group_call(chat_id)
@@ -93,8 +97,11 @@ async def play_next_song(chat_id: int):
         return
 
     song = queue.pop(0)
+    filepath = song['filepath']
+    now_playing[chat_id] = filepath # Şu an çalan şarkının yolunu kaydet
+    
     try:
-        await pytgcalls.change_stream(chat_id, AudioPiped(song['url']))
+        await pytgcalls.change_stream(chat_id, InputStream(input_filename=filepath))
         
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🎥 YouTube'da İzle", url=song['link'])]])
         await app.send_message(
@@ -106,58 +113,55 @@ async def play_next_song(chat_id: int):
             reply_markup=keyboard
         )
     except GroupCallNotFound:
-        # Eğer manuel olarak kapatılırsa hata vermesin diye
         if chat_id in active_chats:
             active_chats.remove(chat_id)
-
+    except Exception as e:
+        logging.error(f"Sıradaki şarkı çalınırken hata: {e}")
+        await app.send_message(chat_id, f"❌ Sıradaki şarkıya geçerken bir hata oluştu: `{e}`")
 
 # --- KOMUTLAR ---
 
 @app.on_message(filters.command("start", prefixes=PREFIX))
 async def start_command(_, message: Message):
-    await message.reply_text(
-        "Merhaba! Ben bir Telegram Müzik Botuyum.\n\n"
-        f"Beni bir gruba ekleyin ve sesli sohbeti başlatın. Sonra `{PREFIX}play <şarkı adı>` komutunu kullanabilirsiniz.\n\n"
-        f"Tüm komutları görmek için `{PREFIX}help` yazın."
-    )
+    await message.reply_text(f"Merhaba! Ben bir müzik botuyum. Komutlar için `{PREFIX}help` yaz.")
 
 @app.on_message(filters.command("help", prefixes=PREFIX))
 async def help_command(_, message: Message):
     await message.reply_text(
         f"**🎶 Komut Listesi 🎶**\n\n"
-        f"`{PREFIX}play <şarkı adı veya link>` - Şarkı çalar veya sıraya ekler.\n"
+        f"`{PREFIX}play <şarkı adı>` - Şarkı çalar veya sıraya ekler.\n"
         f"`{PREFIX}skip` - Sıradaki şarkıya geçer.\n"
-        f"`{PREFIX}pause` - Çalan müziği duraklatır.\n"
-        f"`{PREFIX}resume` - Duraklatılan müziği devam ettirir.\n"
-        f"`{PREFIX}stop` - Müziği durdurur ve bot sohbetten ayrılır.\n"
+        f"`{PREFIX}pause` - Müziği duraklatır.\n"
+        f"`{PREFIX}resume` - Müziği devam ettirir.\n"
+        f"`{PREFIX}stop` - Müziği durdurur ve bot ayrılır.\n"
         f"`{PREFIX}queue` - Çalma listesini gösterir."
     )
 
 @app.on_message(filters.command("play", prefixes=PREFIX) & filters.group)
 async def play_command(_, message: Message):
     if len(message.command) < 2:
-        return await message.reply_text(f"❓ Lütfen bir şarkı adı veya YouTube linki belirtin.\n\nÖrnek: `{PREFIX}play Tarkan Yolla`")
+        return await message.reply_text(f"❓ Örnek: `{PREFIX}play Tarkan Yolla`")
 
     query = " ".join(message.command[1:])
     chat_id = message.chat.id
     requester = message.from_user.mention
     
-    msg = await message.reply_text("🔄 **Aranıyor...**")
+    msg = await message.reply_text("🔄 **Aranıyor ve indiriliyor...**")
 
-    song_data, error = search_youtube(query)
+    song_data, error = search_and_download(query)
     if error:
         return await msg.edit_text(f"❌ **Hata:** {error}")
     
-    await msg.edit_text("📥 **İndiriliyor ve işleniyor...**")
-
-    # Bot sesli sohbette mi kontrol et
     is_active = chat_id in active_chats
     
     if not is_active:
-        # Sesli sohbete katıl ve ilk şarkıyı çal
         try:
-            await pytgcalls.join_group_call(chat_id, AudioPiped(song_data['url']))
+            await pytgcalls.join_group_call(
+                chat_id, 
+                InputStream(input_filename=song_data['filepath'])
+            )
             active_chats.append(chat_id)
+            now_playing[chat_id] = song_data['filepath'] # Çalan şarkıyı kaydet
             
             keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🎥 YouTube'da İzle", url=song_data['link'])]])
             await msg.edit_text(
@@ -168,10 +172,9 @@ async def play_command(_, message: Message):
                 reply_markup=keyboard
             )
         except Exception as e:
-            return await msg.edit_text(f"❌ **Hata:** Sesli sohbete katılamadım. Lütfen sesli sohbetin açık olduğundan emin olun.\n\n`{e}`")
+            await msg.edit_text(f"❌ **Hata:** Sesli sohbete katılamadım. `{e}`")
     else:
-        # Zaten bir şey çalıyorsa sıraya ekle
-        add_to_queue(chat_id, song_data['title'], song_data['duration'], song_data['url'], song_data['link'], requester)
+        add_to_queue(chat_id, song_data['title'], song_data['duration'], song_data['filepath'], song_data['link'], requester)
         await msg.edit_text(f"➕ **Sıraya Eklendi:** `{song_data['title']}`\n**Pozisyon:** `{len(get_queue(chat_id))}`")
 
 @app.on_message(filters.command("skip", prefixes=PREFIX) & filters.group)
@@ -186,7 +189,7 @@ async def skip_command(_, message: Message):
 @app.on_message(filters.command("pause", prefixes=PREFIX) & filters.group)
 async def pause_command(_, message: Message):
     await pytgcalls.pause_stream(message.chat.id)
-    await message.reply_text("⏸️ **Müzik duraklatıldı.** Devam etmek için `.resume`.")
+    await message.reply_text(f"⏸️ **Müzik duraklatıldı.** Devam etmek için `{PREFIX}resume`.")
 
 @app.on_message(filters.command("resume", prefixes=PREFIX) & filters.group)
 async def resume_command(_, message: Message):
@@ -196,10 +199,16 @@ async def resume_command(_, message: Message):
 @app.on_message(filters.command("stop", prefixes=PREFIX) & filters.group)
 async def stop_command(_, message: Message):
     chat_id = message.chat.id
+    # Çalma listesini ve mevcut şarkıyı temizle
     if chat_id in queues:
         queues.pop(chat_id)
+    if chat_id in now_playing:
+        if os.path.exists(now_playing[chat_id]):
+            os.remove(now_playing[chat_id])
+        del now_playing[chat_id]
     if chat_id in active_chats:
         active_chats.remove(chat_id)
+        
     await pytgcalls.leave_group_call(chat_id)
     await message.reply_text("⏹️ **Müzik durduruldu ve sohbetten ayrıldım.**")
     
@@ -219,20 +228,19 @@ async def queue_command(_, message: Message):
 # --- OLAY DİNLEYİCİSİ ---
 @pytgcalls.on_stream_end()
 async def on_stream_end_handler(_, update):
-    """Bir şarkı bittiğinde sıradakini çalar."""
     chat_id = update.chat_id
     await play_next_song(chat_id)
 
 
 # --- BOTU BAŞLATMA ---
 async def main():
-    print("Bot başlatılıyor...")
+    logging.info("Bot başlatılıyor...")
     await app.start()
-    print("Bot istemcisi başlatıldı.")
+    logging.info("Bot istemcisi başlatıldı.")
     await user_client.start()
-    print("Userbot istemcisi başlatıldı.")
+    logging.info("Userbot istemcisi başlatıldı.")
     await pytgcalls.start()
-    print("PyTgCalls istemcisi başlatıldı. Bot artık hazır!")
+    logging.info("PyTgCalls istemcisi başlatıldı. Bot artık hazır!")
     await asyncio.idle()
 
 if __name__ == "__main__":
@@ -240,4 +248,4 @@ if __name__ == "__main__":
         main_loop = asyncio.get_event_loop()
         main_loop.run_until_complete(main())
     except KeyboardInterrupt:
-        print("Bot kapatılıyor.")
+        logging.info("Bot kapatılıyor.")
