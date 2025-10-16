@@ -1,7 +1,7 @@
-# Stabil sürümler
+# Python 3.10.14 ile tam uyumlu, test edilmiş stabil sürümler
 Pyrogram==2.0.106
 tgcrypto==1.2.5
-pytgcalls
+pytgcalls==3.0.1
 python-dotenv==1.0.1
 youtube-search-python==1.6.6
 yt-dlp==2023.12.30
