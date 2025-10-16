@@ -1,6 +1,6 @@
 Pyrogram>=2.0.106
 tgcrypto
-pytgcalls
+pytgcalls # En güncel ve doğru paket adı
 python-dotenv
 youtube-search-python
 yt-dlp
