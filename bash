@@ -1,2 +1,7 @@
-sudo apt update && sudo apt install -y docker.io docker-compose
-sudo systemctl enable --now docker
+unzip telegram-music-bot.zip
+cd telegram-music-bot
+cp .env.example .env
+nano .env  # bilgileri doldur
+python3 gen_session.py
+python3 bot.py
+
