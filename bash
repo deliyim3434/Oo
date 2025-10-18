@@ -1,3 +1,2 @@
-git add .
-git commit -m "Add runtime.txt to specify Python version"
-git push heroku main
+sudo apt update && sudo apt install -y docker.io docker-compose
+sudo systemctl enable --now docker
